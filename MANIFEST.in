@@ -1,0 +1,4 @@
+include README.md
+recursive-include octoprint_EnclosureFanController/templates *
+recursive-include octoprint_EnclosureFanController/translations *
+recursive-include octoprint_EnclosureFanController/static *
