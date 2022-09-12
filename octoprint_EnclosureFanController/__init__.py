@@ -14,7 +14,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def on_event(self, event, payload):
 		if event == octoprint.events.Events.USER_LOGGED_IN:
-			self._logger.info("kevin logged in")
+			self._logger.info("login event caught")
 
 	def GetSettingValues(self):
 		self._tempThreshold = self._settings.get_int(["thresholdTemp"])
@@ -60,9 +60,6 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def __init__(self):
 		self._checkTempTimer = None
-#		GPIO.setmode(GPIO.BCM)
-#		GPIO.setup(2, GPIO.OUT)
-#		GPIO.output(2, GPIO.HIGH)
 		self._sensor= W1ThermSensor()
 
 		self._fanIsOn = False
@@ -75,9 +72,6 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def on_after_startup(self):
 		self.GetSettingValues()
-		#self._tempThreshold = self._settings.get_int(["thresholdTemp"])
-		#self._interval = self._settings.get_int(["timerInterval"])
-		#self._logger.info("threshold = %s" % self._settings.get(["thresholdTemp"]))
 
 		fanGpioPin = self._settings.get_int(["fanControlPin"])
 
