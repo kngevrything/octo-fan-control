@@ -19,7 +19,7 @@ plugin_version = "1.0.0"
 
 # The plugin's description. Can be overwritten within OctoPrint's internal data via __plugin_description__ in the plugin
 # module
-plugin_description = "A controller for the fan on a 3D prrrrinter enclosure plugin for OctoPrint"
+plugin_description = "A controller for the fan on a 3D printer enclosure plugin for OctoPrint"
 
 # The plugin's author. Can be overwritten within OctoPrint's internal data via __plugin_author__ in the plugin module
 plugin_author = "kngevrything"
@@ -28,13 +28,13 @@ plugin_author = "kngevrything"
 plugin_author_email = "you@example.com"
 
 # The plugin's homepage URL. Can be overwritten within OctoPrint's internal data via __plugin_url__ in the plugin module
-plugin_url = "https://github.com/you/OctoPrint-Enclosurefancontroller"
+plugin_url = "https://github.com/kngevrything/octo-fan-control/"
 
 # The plugin's license. Can be overwritten within OctoPrint's internal data via __plugin_license__ in the plugin module
 plugin_license = "AGPLv3"
 
 # Any additional requirements besides OctoPrint should be listed here
-plugin_requires = []
+plugin_requires = ["w1thermsensor","RPi.GPIO"]
 
 ### --------------------------------------------------------------------------------------------------------------------
 ### More advanced options that you usually shouldn't have to touch follow after this point
@@ -80,19 +80,19 @@ except:
     sys.exit(-1)
 
 setup_parameters = octoprint_setuptools.create_plugin_setup_parameters(
-    identifier=EnclosureFanController,
-    package=octoprint_EnclosureFanController,
-    name=Enclosure Fan Controllere,
-    version=1.0,
-    description=Plugin that monitors a temperature sensor and ,
-    author=kngevrything,
-    mail=kngevrything@gmail.com,
-    url=https://github.com/kngevrything/octo-fan-control,
-    license=AGPLv3,
-    requires=python-w1thermsensor, GPIO,
-    additional_packages=python-w1thermsensor,
-    ignored_packages=plugin_ignored_packages,
-    additional_data=plugin_additional_data,
+	identifier=plugin_identifier,
+	package=plugin_package,
+	name=plugin_name,
+	version=plugin_version,
+	description=plugin_description,
+	author=plugin_author,
+	mail=plugin_author_email,
+	url=plugin_url,
+	license=plugin_license,
+	requires=plugin_requires,
+	additional_packages=plugin_additional_packages,
+	ignored_packages=plugin_ignored_packages,
+	additional_data=plugin_additional_data,
 )
 
 if len(additional_setup_parameters):
