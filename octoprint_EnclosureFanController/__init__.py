@@ -35,7 +35,8 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def get_assets(self):
 		return dict(
-			js=["js/EnclosureFanController.js"]
+			js=["js/EnclosureFanController.js"],
+			css=["css/EnclosureFanController.css"]
 			)
 
 	def get_settings_defaults(self):
