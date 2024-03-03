@@ -1,3 +1,6 @@
+# coding=utf-8
+from __future__ import absolute_import
+
 import octoprint.plugin
 import RPi.GPIO as GPIO
 from w1thermsensor import W1ThermSensor
