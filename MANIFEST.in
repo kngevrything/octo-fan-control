@@ -1,0 +1,4 @@
+include README.md
+recursive-include EnclosureFanController/templates *
+recursive-include EnclosureFanController/translations *
+recursive-include EnclosureFanController/static *

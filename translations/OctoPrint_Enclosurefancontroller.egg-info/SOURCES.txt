@@ -1,0 +1,16 @@
+MANIFEST.in
+README.md
+setup.cfg
+setup.py
+EnclosureFanController/__init__.py
+EnclosureFanController/static/css/EnclosureFanController.css
+EnclosureFanController/static/js/EnclosureFanController.js
+EnclosureFanController/static/less/EnclosureFanController.less
+EnclosureFanController/templates/README.txt
+OctoPrint_Enclosurefancontroller.egg-info/PKG-INFO
+OctoPrint_Enclosurefancontroller.egg-info/SOURCES.txt
+OctoPrint_Enclosurefancontroller.egg-info/dependency_links.txt
+OctoPrint_Enclosurefancontroller.egg-info/entry_points.txt
+OctoPrint_Enclosurefancontroller.egg-info/not-zip-safe
+OctoPrint_Enclosurefancontroller.egg-info/requires.txt
+OctoPrint_Enclosurefancontroller.egg-info/top_level.txt
