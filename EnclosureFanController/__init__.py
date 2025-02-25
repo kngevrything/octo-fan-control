@@ -16,10 +16,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 	lastReadTemperature = 0
 
 	def on_event(self, event, payload):
+		# Handle user login events
 		if event == octoprint.events.Events.USER_LOGGED_IN:
 			self._logger.info("login event caught")
 
 	def GetSettingValues(self):
+		# Retrieve setting values from the OctoPrint configuration page
 		self._tempThreshold = self._settings.get_int(["thresholdTemp"])
 		self._interval = self._settings.get_int(["timerInterval"])
 		self._fanControlPin = self._settings.get_int(["fanControlPin"])
@@ -30,6 +32,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 
 	def after_UpdateSettings(self):
+		# Update settings and restart the timer
 		self.GetSettingValues()
 		if self._checkTempTimer is not None:
 			self._checkTempTimer.cancel()
@@ -68,14 +71,16 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._fanIsOn = False
 
 	def __del__(self):
+		# Clean up timer
 		self._checkTempTime.stop()
 
 	def on_shutdown(self):
+		# Clean up GPIO pins on shutdown
 		GPIO.cleanup()
 
 	def on_after_startup(self):
+		# Retrieve settings and initialize GPIO and sensor
 		self.GetSettingValues()
-
 		fanGpioPin = self._settings.get_int(["fanControlPin"])
 
 		GPIO.setmode(GPIO.BCM)
@@ -95,6 +100,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._checkTempTimer.start()
 
 	def getCurrentTemperature(self):
+		# Retrieve the current temperature from the sensor and return it in degrees (F)
 		temp = 0
 
 		try:
@@ -111,6 +117,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		return temp
 
 	def update_temp(self):
+		# Update the temperature and control the fan accordingly
 		temp = self.getCurrentTemperature()
 		self._logger.info("temperature = %f"  % temp)
 
