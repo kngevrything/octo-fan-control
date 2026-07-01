@@ -183,5 +183,5 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 		self.after_UpdateSettings()
 
-__plugin_pythoncompat__ = ">=3.7,<4"
+__plugin_pythoncompat__ = ">=3.9,<4"
 __plugin_implementation__ = EnclosureFanController()
