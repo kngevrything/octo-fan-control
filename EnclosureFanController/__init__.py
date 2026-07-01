@@ -2,6 +2,7 @@
 from __future__ import absolute_import
 
 import octoprint.plugin
+import octoprint.events
 import RPi.GPIO as GPIO
 from w1thermsensor import W1ThermSensor
 from octoprint.util import RepeatedTimer
@@ -61,7 +62,9 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def get_template_configs(self):
 		return [
-			dict(type="settings", custom_bindings=False)
+			dict(type="settings", custom_bindings=False),
+			dict(type="navbar", custom_bindings=True),
+			dict(type="tab", custom_bindings=True, name="Enclosure")
 			]
 
 	def __init__(self):
@@ -72,7 +75,8 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def __del__(self):
 		# Clean up timer
-		self._checkTempTime.stop()
+		if self._checkTempTimer is not None:
+			self._checkTempTimer.cancel()
 
 	def on_shutdown(self):
 		# Clean up GPIO pins on shutdown
@@ -106,7 +110,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		try:
 			temp = self._sensor.get_temperature()
 			temp = (float(temp) * 9 / 5) + 32
-			lastReadTemperature = temp
+			self.lastReadTemperature = temp
 
 			self._plugin_manager.send_plugin_message(self._identifier, dict(enclosureTemp=temp))
 
@@ -122,10 +126,10 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._logger.info("temperature = %f"  % temp)
 
 		if temp > self._tempThreshold and not self._fanIsOn:
-			GPIO.output(2,GPIO.LOW)
+			GPIO.output(self._fanControlPin, GPIO.LOW)
 			self._fanIsOn = True
 		elif temp < self._tempThreshold and self._fanIsOn:
-			GPIO.output(2, GPIO.HIGH)
+			GPIO.output(self._fanControlPin, GPIO.HIGH)
 			self._fanIsOn = False
 
 	def on_settings_save(self, data):

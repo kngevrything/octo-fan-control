@@ -27,7 +27,7 @@ $(function() {
 			}
 			else
 			{
-				self.enclosurerTemp("N/A");
+				self.enclosureTemp("N/A");
 			}
 		}
 	};
