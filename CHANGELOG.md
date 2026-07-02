@@ -6,6 +6,12 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-02
+
+UI/UX polish pass, plus a real-world reliability find: the plugin could
+silently vanish from OctoPrint's plugin list entirely if the 1-Wire interface
+wasn't enabled yet.
+
 ### Added
 - **Hardware-unavailable banner**: if `RPi.GPIO`/`w1thermsensor` fail to
   import or initialize (see "Plugin could silently disappear..." below), a
