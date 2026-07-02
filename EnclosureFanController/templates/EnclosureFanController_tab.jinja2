@@ -9,7 +9,17 @@
 <div class="alert alert-error" data-bind="visible: hardwareError, text: hardwareError" style="display: none;"></div>
 {% endif %}
 
-<div>
-	<span id="enclosureInfo" data-bind="attr: { title: 'Enclosure Temperature' }, html: enclosureTemp()"></span>
-	<span id="enclosureFanState" data-bind="attr: { title: 'Fan State' }, text: fanState()"></span>
+<div class="well well-small enclosure-status-panel">
+	<div class="enclosure-status-row">
+		<div class="enclosure-status-block">
+			<div class="enclosure-status-label">{{ _('Temperature') }}</div>
+			<div class="enclosure-status-value" id="enclosureInfo" data-bind="attr: { title: 'Enclosure Temperature' }, html: enclosureTempValue"></div>
+		</div>
+		<div class="enclosure-status-block">
+			<div class="enclosure-status-label">{{ _('Fan') }}</div>
+			<div class="enclosure-status-value" id="enclosureFanState">
+				<span data-bind="attr: { title: 'Fan State', class: fanBadgeClass }, text: fanBadgeText"></span>
+			</div>
+		</div>
+	</div>
 </div>

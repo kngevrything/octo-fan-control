@@ -6,6 +6,13 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Cleaner "Enclosure" tab layout**: temperature and fan state are now
+  shown as a two-column status card (labeled "Temperature" / "Fan") instead
+  of a single line of plain text. Fan state renders as a colored badge
+  (green "ON", dark "OFF", neutral "—" when unknown/hardware unavailable)
+  rather than inline text. The navbar's compact display is unchanged.
+
 ### Fixed
 - **Hardware-unavailable banner (added in 0.3.0) never actually rendered**:
   the banner's Jinja templates referenced the value returned from
