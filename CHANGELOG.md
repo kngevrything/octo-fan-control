@@ -6,6 +6,30 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Fan state indicator**: the navbar and "Enclosure" tab now show whether the
+  fan is currently on or off, alongside the temperature, pushed over the
+  existing `send_plugin_message`/`onDataUpdaterPluginMessage` channel.
+- **Celsius/Fahrenheit display unit** setting. The sensor always reads
+  Celsius from `w1thermsensor`; this setting controls the unit used for
+  display and for interpreting `Threshold Temperature`/`Hysteresis`.
+  Defaults to Fahrenheit, matching prior behavior.
+- Settings validation: the settings UI now flags (in red, inline) a
+  hysteresis that's zero/negative or greater than or equal to the threshold
+  temperature.
+
+### Fixed
+- Hysteresis of `0` was previously accepted (only negative values fell back
+  to the default); `GetSettingValues()` now rejects zero as well.
+- `GetSettingValues()` now defensively clamps hysteresis to below the
+  threshold temperature server-side, in addition to the new client-side
+  warning, so a bad settings.json can't leave the fan permanently on or
+  produce a nonsensical off-point.
+- A failed sensor read is now signaled to the UI with an explicit
+  `sensorError` flag instead of a `0`-degree sentinel value, so a legitimate
+  `0°C` (or negative, in Celsius mode) reading is no longer mistaken for a
+  sensor failure and displayed as "N/A".
+
 ## [0.2.0] - 2026-07-01
 
 First hardening pass over the original plugin scaffold: fixes several bugs that

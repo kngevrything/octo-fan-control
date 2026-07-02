@@ -109,10 +109,82 @@ class FanControlTests(unittest.TestCase):
         ctrl = make_controller(self.module, settings)
         self.assertEqual(ctrl._tempHysteresis, 5)
 
+    def test_zero_hysteresis_falls_back_to_default(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["thresholdHysteresis"] = 0
+        ctrl = make_controller(self.module, settings)
+        self.assertEqual(ctrl._tempHysteresis, 5)
+
+    def test_hysteresis_greater_than_threshold_is_clamped(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["thresholdTemp"] = 90
+        settings["thresholdHysteresis"] = 200
+        ctrl = make_controller(self.module, settings)
+        self.assertLess(ctrl._tempHysteresis, ctrl._tempThreshold)
+        self.assertEqual(ctrl._tempHysteresis, 89)
+
+    def test_hysteresis_equal_to_threshold_is_clamped(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["thresholdTemp"] = 90
+        settings["thresholdHysteresis"] = 90
+        ctrl = make_controller(self.module, settings)
+        self.assertLess(ctrl._tempHysteresis, ctrl._tempThreshold)
+
+    def test_missing_threshold_falls_back_to_default(self):
+        settings = dict(DEFAULT_SETTINGS)
+        del settings["thresholdTemp"]
+        ctrl = make_controller(self.module, settings)
+        self.assertEqual(ctrl._tempThreshold, 90)
+
     def test_shutdown_drives_pin_off_before_cleanup(self):
         ctrl = make_controller(self.module, DEFAULT_SETTINGS)
         ctrl.on_shutdown()
         self.assertIn((23, "HIGH"), self.gpio.calls)
+
+    def test_default_unit_is_fahrenheit(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS, temp_c=20)
+        self.assertEqual(ctrl._tempUnit, "F")
+        self.assertAlmostEqual(ctrl.getCurrentTemperature(), c_to_f(20))
+
+    def test_invalid_unit_falls_back_to_fahrenheit(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["tempUnit"] = "K"
+        ctrl = make_controller(self.module, settings, temp_c=20)
+        self.assertEqual(ctrl._tempUnit, "F")
+
+    def test_celsius_unit_reports_raw_sensor_value(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["tempUnit"] = "C"
+        ctrl = make_controller(self.module, settings, temp_c=20)
+        self.assertEqual(ctrl.getCurrentTemperature(), 20)
+
+    def test_update_temp_broadcasts_temperature_and_fan_state(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS, temp_c=40)  # above threshold
+        ctrl.update_temp()
+
+        self.assertEqual(len(ctrl._plugin_manager.messages), 1)
+        identifier, data = ctrl._plugin_manager.messages[0]
+        self.assertEqual(identifier, "EnclosureFanController")
+        self.assertTrue(data["fanIsOn"])
+        self.assertFalse(data["sensorError"])
+        self.assertEqual(data["tempUnit"], "F")
+        self.assertAlmostEqual(data["enclosureTemp"], c_to_f(40))
+
+    def test_update_temp_broadcasts_fan_off_state(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS, temp_c=1)  # below threshold
+        ctrl.update_temp()
+
+        _, data = ctrl._plugin_manager.messages[0]
+        self.assertFalse(data["fanIsOn"])
+
+    def test_failed_read_broadcasts_sensor_error(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS, temp_c=1)
+        ctrl._sensor.raise_error = True
+        ctrl.update_temp()
+
+        _, data = ctrl._plugin_manager.messages[0]
+        self.assertTrue(data["sensorError"])
+        self.assertIsNone(data["enclosureTemp"])
 
 
 if __name__ == "__main__":

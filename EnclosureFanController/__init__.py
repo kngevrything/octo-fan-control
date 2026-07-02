@@ -31,14 +31,39 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._tempHysteresis = self._settings.get_int(["thresholdHysteresis"])
 		self._interval = self._settings.get_int(["timerInterval"])
 		self._fanControlPin = self._settings.get_int(["fanControlPin"])
+		self._tempUnit = self._settings.get(["tempUnit"])
 
-		if self._tempHysteresis is None or self._tempHysteresis < 0:
+		if self._tempUnit not in ("C", "F"):
+			self._tempUnit = "F"
+
+		if self._tempThreshold is None:
+			self._tempThreshold = 90
+
+		# Hysteresis must be a positive number, and smaller than the threshold -
+		# otherwise the "off" point (threshold - hysteresis) would be at or below
+		# zero degrees of margin, defeating the point of a hysteresis band (or,
+		# if hysteresis > threshold, pushing the off point below whatever the
+		# fan-on comparison could ever produce).
+		if self._tempHysteresis is None or self._tempHysteresis <= 0:
+			self._logger.warning(
+				"Hysteresis (%s) must be a positive number - defaulting to 5"
+				% self._tempHysteresis
+			)
 			self._tempHysteresis = 5
 
-		self._logger.info("threshold = %s" % self._settings.get(["thresholdTemp"]))
+		if self._tempHysteresis >= self._tempThreshold:
+			clamped = max(1, self._tempThreshold - 1)
+			self._logger.warning(
+				"Hysteresis (%s) must be less than threshold (%s) - clamping to %s"
+				% (self._tempHysteresis, self._tempThreshold, clamped)
+			)
+			self._tempHysteresis = clamped
+
+		self._logger.info("threshold = %s" % self._tempThreshold)
 		self._logger.info("hysteresis = %s" % self._tempHysteresis)
 		self._logger.info("timer interval = %s" % self._settings.get(["timerInterval"]))
 		self._logger.info("fanControlPin = %s" % self._settings.get(["fanControlPin"]))
+		self._logger.info("tempUnit = %s" % self._tempUnit)
 
 
 	def after_UpdateSettings(self):
@@ -62,7 +87,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			timerInterval = 5,
 			# BCM 17 - a general-purpose pin, unlike the previous default of BCM 2
 			# which doubles as the I2C1 SDA line on most Pi boards.
-			fanControlPin = 17)
+			fanControlPin = 17,
+			# Display/threshold unit. "F" preserves the plugin's historical
+			# behavior (thresholdTemp/thresholdHysteresis in Fahrenheit); the
+			# sensor itself always reads Celsius from w1thermsensor regardless
+			# of this setting.
+			tempUnit = "F")
 
 	def get_template_vars(self):
 		return dict(
@@ -125,22 +155,43 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._checkTempTimer.start()
 
 	def getCurrentTemperature(self):
-		# Retrieve the current temperature from the sensor in degrees (F).
-		# Returns None on a failed read so callers can tell "sensor error"
-		# apart from a legitimate low reading, instead of silently treating
-		# both as 0.
+		# Retrieve the current temperature from the sensor, converted to
+		# whichever unit is configured for display/thresholds (self._tempUnit).
+		# The sensor itself always reads Celsius; w1thermsensor never returns
+		# Fahrenheit directly. Returns None on a failed read so callers can
+		# tell "sensor error" apart from a legitimate low (or sub-zero, in
+		# Celsius mode) reading, instead of silently treating both as 0.
 		try:
-			temp = self._sensor.get_temperature()
-			temp = (float(temp) * 9 / 5) + 32
+			tempCelsius = float(self._sensor.get_temperature())
+			temp = self.convertTemperature(tempCelsius)
 			self.lastReadTemperature = temp
-
-			self._plugin_manager.send_plugin_message(self._identifier, dict(enclosureTemp=temp))
 			return temp
 
 		except Exception as ex:
 			self._logger.warning("Couldn't read temperature sensor: %s" % ex)
-			self._plugin_manager.send_plugin_message(self._identifier, dict(enclosureTemp=0))
 			return None
+
+	def convertTemperature(self, tempCelsius):
+		# Convert a raw Celsius sensor reading into the configured display
+		# unit. Defaults to Fahrenheit (the plugin's historical behavior) for
+		# any unrecognized/unset unit.
+		if getattr(self, "_tempUnit", "F") == "C":
+			return tempCelsius
+		return (tempCelsius * 9 / 5) + 32
+
+	def sendStatusUpdate(self, temp, sensorError):
+		# Broadcast the current temperature (in the configured display unit)
+		# and fan state to the UI via the existing send_plugin_message /
+		# onDataUpdaterPluginMessage mechanism.
+		self._plugin_manager.send_plugin_message(
+			self._identifier,
+			dict(
+				enclosureTemp = temp,
+				tempUnit = getattr(self, "_tempUnit", "F"),
+				fanIsOn = self._fanIsOn,
+				sensorError = sensorError,
+			)
+		)
 
 	def update_temp(self):
 		# Update the temperature and control the fan accordingly, using a
@@ -162,6 +213,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 			# Otherwise leave the fan in whatever state it was already in -
 			# don't act on a reading we don't trust.
+			self.sendStatusUpdate(None, sensorError=True)
 			return
 
 		self._sensorFailureCount = 0
@@ -173,6 +225,8 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		elif temp < (self._tempThreshold - self._tempHysteresis) and self._fanIsOn:
 			GPIO.output(self._fanControlPin, GPIO.HIGH)
 			self._fanIsOn = False
+
+		self.sendStatusUpdate(temp, sensorError=False)
 
 	def on_settings_save(self, data):
 		octoprint.plugin.SettingsPlugin.on_settings_save(self, data)

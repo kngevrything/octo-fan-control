@@ -15,8 +15,8 @@ once the enclosure gets too hot.
   is wrong and fails safe by turning the fan **on** (and logging an error) rather
   than silently doing nothing while the enclosure could be overheating. Normal
   control resumes automatically once a valid reading comes back.
-* The current temperature is shown in the OctoPrint navbar and in a dedicated
-  "Enclosure" tab.
+* The current temperature and fan state (on/off) are shown in the OctoPrint
+  navbar and in a dedicated "Enclosure" tab.
 
 ## Hardware assumptions
 
@@ -59,13 +59,16 @@ aren't already present.
 
 | Setting | Default | Description |
 |---|---|---|
-| Threshold Temperature | 90°F | Temperature at which the fan turns on. |
-| Hysteresis | 5°F | How far below the threshold the temperature must drop before the fan turns back off. Prevents rapid on/off cycling right at the threshold. |
+| Display Unit | Fahrenheit | Whether temperatures are displayed, and `Threshold Temperature`/`Hysteresis` are entered, in Celsius or Fahrenheit. The sensor always reads Celsius internally regardless of this setting. |
+| Threshold Temperature | 90°F | Temperature at which the fan turns on, in the unit selected above. |
+| Hysteresis | 5°F | How far below the threshold the temperature must drop before the fan turns back off, in the unit selected above. Prevents rapid on/off cycling right at the threshold. Must be a positive number smaller than the threshold temperature — the settings UI will flag it, and invalid values are also clamped server-side. |
 | Timer Interval | 5 min | How often the sensor is polled. |
 | GPIO Pin | 17 (BCM) | The GPIO pin (BCM numbering) wired to your fan relay/MOSFET. |
 
 Changing any setting restarts the polling timer with the new values immediately —
-no OctoPrint restart required.
+no OctoPrint restart required. Note that switching Display Unit does not convert
+your existing Threshold Temperature/Hysteresis values — re-enter them in the new
+unit after switching.
 
 ## Troubleshooting
 

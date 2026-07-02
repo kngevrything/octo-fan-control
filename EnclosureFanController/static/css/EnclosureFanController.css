@@ -8,3 +8,7 @@
   top: 50%;
   transform: translateY(50%);
 }
+
+.navbar2-text .enclosure-fan-state {
+  margin-left: 8px;
+}

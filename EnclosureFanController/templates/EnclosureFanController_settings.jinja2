@@ -1,5 +1,14 @@
 <form class="form-horizontal">
     <div class="control-group">
+        <label class="control-label">{{ _('Display Unit') }}</label>
+        <div class="controls">
+            <select data-bind="value: settings.plugins.EnclosureFanController.tempUnit">
+                <option value="F">{{ _('Fahrenheit (°F)') }}</option>
+                <option value="C">{{ _('Celsius (°C)') }}</option>
+            </select>
+            <span class="help-block">{{ _('The sensor always reads Celsius internally; this only controls the display unit. Enter Threshold Temperature and Hysteresis below in this unit.') }}</span>
+        </div>
+
         <label class="control-label">{{ _('thresholdTemp') }}</label>
         <div class="controls">
             <input type="text" class="input-block-level" data-bind="value: settings.plugins.EnclosureFanController.thresholdTemp">
@@ -8,8 +17,9 @@
 	<label class="control-label">{{ _('Hysteresis') }}</label>
 
 	<div class="controls">
-            <input type="text" class="input-block-level" data-bind="value: settings.plugins.EnclosureFanController.thresholdHysteresis">
-            <span class="help-block">{{ _('Degrees below the threshold the temperature must drop to before the fan turns back off. Prevents rapid on/off cycling near the threshold.') }}</span>
+            <input type="text" class="input-block-level" data-bind="value: settings.plugins.EnclosureFanController.thresholdHysteresis, css: { error: hysteresisWarning }">
+            <span class="help-block">{{ _('Degrees below the threshold the temperature must drop to before the fan turns back off. Prevents rapid on/off cycling near the threshold. Must be a positive number smaller than the threshold temperature.') }}</span>
+            <span class="help-block text-error" data-bind="visible: hysteresisWarning, text: hysteresisWarning"></span>
 	</div>
 
 	<label class="control-label">{{ _('Timer Interval') }}</label>
