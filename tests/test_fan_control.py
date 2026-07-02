@@ -136,6 +136,75 @@ class FanControlTests(unittest.TestCase):
         ctrl = make_controller(self.module, settings)
         self.assertEqual(ctrl._tempThreshold, 90)
 
+    def test_missing_interval_falls_back_to_default(self):
+        # Timer interval is a plain text field in the settings UI, so a
+        # blank/non-numeric save can leave it unset - same failure mode
+        # negative/zero hysteresis already guards against above.
+        settings = dict(DEFAULT_SETTINGS)
+        del settings["timerInterval"]
+        ctrl = make_controller(self.module, settings)
+        self.assertEqual(ctrl._interval, 5)
+
+    def test_zero_or_negative_interval_falls_back_to_default(self):
+        settings = dict(DEFAULT_SETTINGS)
+        settings["timerInterval"] = 0
+        ctrl = make_controller(self.module, settings)
+        self.assertEqual(ctrl._interval, 5)
+
+    def test_missing_fan_control_pin_falls_back_to_default(self):
+        settings = dict(DEFAULT_SETTINGS)
+        del settings["fanControlPin"]
+        ctrl = make_controller(self.module, settings)
+        self.assertEqual(ctrl._fanControlPin, 17)
+
+    def test_update_temp_survives_gpio_write_failure(self):
+        # A transient GPIO error (e.g. pin claimed elsewhere) driving the fan
+        # pin must not escape update_temp() uncaught - it runs on
+        # RepeatedTimer's background thread with nothing above it to catch
+        # an exception, which would otherwise silently kill the polling
+        # thread and freeze the fan in its last state.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS, temp_c=1)  # fan off, cold
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("pin busy")
+
+        original_output = self.gpio.output
+        self.addCleanup(setattr, self.gpio, "output", original_output)
+        self.gpio.output = _boom
+
+        ctrl._sensor.temp_c = 40  # above threshold - would normally turn fan on
+        ctrl.update_temp()  # must not raise
+
+        self.assertFalse(ctrl._fanIsOn, "fan state shouldn't flip if the GPIO write itself failed")
+        self.assertTrue(
+            any("Couldn't drive fan pin" in msg for _, msg in ctrl._logger.messages)
+        )
+
+    def test_after_update_settings_restarts_timer_when_hardware_ok(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        ctrl.on_after_startup()
+        old_timer = ctrl._checkTempTimer
+
+        ctrl.after_UpdateSettings()
+
+        self.assertTrue(old_timer.cancelled)
+        self.assertIsNotNone(ctrl._checkTempTimer)
+        self.assertTrue(ctrl._checkTempTimer.started)
+
+    def test_after_update_settings_does_not_start_timer_when_hardware_unavailable(self):
+        # Saving settings (even unrelated ones) after a failed startup used
+        # to start the timer unconditionally, which would eventually hit the
+        # sensor-failure fail-safe and call GPIO.output() on hardware that
+        # was never initialized - crashing the exact way on_after_startup's
+        # own guard was designed to prevent.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        ctrl._hardwareOk = False
+        ctrl._sensor = None
+
+        ctrl.after_UpdateSettings()
+
+        self.assertIsNone(ctrl._checkTempTimer)
+
     def test_shutdown_drives_pin_off_before_cleanup(self):
         ctrl = make_controller(self.module, DEFAULT_SETTINGS)
         ctrl.on_shutdown()

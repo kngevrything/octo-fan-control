@@ -82,6 +82,27 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			)
 			self._tempHysteresis = clamped
 
+		# timerInterval/fanControlPin are plain text fields in the settings UI,
+		# so get_int() can come back None (blank/non-numeric input) same as the
+		# fields above. Unlike threshold/hysteresis this used to go unvalidated
+		# here and only got sanity-checked in on_after_startup - so a bad value
+		# saved via the settings page (which calls after_UpdateSettings, not
+		# on_after_startup) would reach start_timer()/GPIO.setup() as None or
+		# <= 0 and blow up. Validate both here so every caller gets it for free.
+		if self._interval is None or self._interval <= 0:
+			self._logger.warning(
+				"Timer interval (%s) must be a positive number - defaulting to 5"
+				% self._interval
+			)
+			self._interval = 5
+
+		if self._fanControlPin is None:
+			self._logger.warning(
+				"Fan control pin (%s) must be a number - defaulting to 17"
+				% self._fanControlPin
+			)
+			self._fanControlPin = 17
+
 		self._logger.info("threshold = %s" % self._tempThreshold)
 		self._logger.info("hysteresis = %s" % self._tempHysteresis)
 		self._logger.info("timer interval = %s" % self._settings.get(["timerInterval"]))
@@ -94,6 +115,18 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self.GetSettingValues()
 		if self._checkTempTimer is not None:
 			self._checkTempTimer.cancel()
+
+		# Settings can be saved at any time, including while hardware is
+		# unavailable (self._hardwareOk == False) - e.g. the user just opens
+		# the settings tab and hits Save after a failed startup. Starting the
+		# timer in that state would poll update_temp() against a None
+		# sensor/GPIO, which eventually hits the sensor-failure fail-safe and
+		# calls GPIO.output() on hardware that was never (or couldn't be)
+		# initialized - the exact crash this plugin's startup path already
+		# guards against.
+		if not self._hardwareOk:
+			self._logger.info("Hardware unavailable - not restarting timer")
+			return
 
 		self.start_timer(self._interval)
 
@@ -243,10 +276,6 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 		self._hardwareOk = True
 
-		if self._interval <= 0:
-			self._interval = 5
-			self._logger.info("Invalid Interval -  Defaulting to 5 min")
-
 		self.update_temp()
 		self.start_timer(self._interval)
 
@@ -302,6 +331,21 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			)
 		)
 
+	def _setFan(self, on):
+		# Drive the fan relay pin, catching GPIO failures instead of letting
+		# them escape update_temp() uncaught. update_temp() runs on
+		# RepeatedTimer's background thread with nothing above it to catch an
+		# exception - one would otherwise silently kill the polling thread,
+		# freezing the fan in its last state with no further temperature
+		# updates and no error surfaced to the UI. Only updates self._fanIsOn
+		# on success, since a failed write means the physical fan state
+		# didn't actually change.
+		try:
+			GPIO.output(self._fanControlPin, GPIO.LOW if on else GPIO.HIGH)
+			self._fanIsOn = on
+		except Exception as ex:
+			self._logger.warning("Couldn't drive fan pin: %s" % ex)
+
 	def update_temp(self):
 		# Update the temperature and control the fan accordingly, using a
 		# hysteresis band so the fan doesn't chatter on/off right at the
@@ -317,8 +361,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 					"Sensor unreachable after %d attempts - turning fan ON as a fail-safe"
 					% self._sensorFailureCount
 				)
-				GPIO.output(self._fanControlPin, GPIO.LOW)
-				self._fanIsOn = True
+				self._setFan(True)
 
 			# Otherwise leave the fan in whatever state it was already in -
 			# don't act on a reading we don't trust.
@@ -329,11 +372,9 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		self._logger.info("temperature = %f"  % temp)
 
 		if temp > self._tempThreshold and not self._fanIsOn:
-			GPIO.output(self._fanControlPin, GPIO.LOW)
-			self._fanIsOn = True
+			self._setFan(True)
 		elif temp < (self._tempThreshold - self._tempHysteresis) and self._fanIsOn:
-			GPIO.output(self._fanControlPin, GPIO.HIGH)
-			self._fanIsOn = False
+			self._setFan(False)
 
 		self.sendStatusUpdate(temp, sensorError=False)
 
