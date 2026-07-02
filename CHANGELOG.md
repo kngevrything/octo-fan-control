@@ -6,6 +6,18 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Hardware-unavailable banner (added in 0.3.0) never actually rendered**:
+  the banner's Jinja templates referenced the value returned from
+  `get_template_vars()` as a bare `{{ hardwareError }}`, but OctoPrint
+  injects `get_template_vars()` keys into the template context prefixed
+  with `plugin_<identifier>_` - so the real variable name is
+  `plugin_EnclosureFanController_hardwareError`. The bare name was simply
+  undefined, which Jinja treats as falsy with no error, so the
+  `{% if %}` block silently never rendered - loading, settings, and the
+  rest of the UI all worked fine, only the new banner was invisible.
+  Templates now reference the correctly-prefixed variable name.
+
 ## [0.3.0] - 2026-07-02
 
 UI/UX polish pass, plus a real-world reliability find: the plugin could

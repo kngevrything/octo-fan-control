@@ -1,7 +1,7 @@
-{% if hardwareError %}
+{% if plugin_EnclosureFanController_hardwareError %}
 <div class="alert alert-error" id="enclosureHardwareError">
 	<strong>{{ _('Hardware unavailable') }}</strong>
-	<p>{{ hardwareError }}</p>
+	<p>{{ plugin_EnclosureFanController_hardwareError }}</p>
 </div>
 {% else %}
 <!-- Covers a tab that was already open when OctoPrint restarted and hit a

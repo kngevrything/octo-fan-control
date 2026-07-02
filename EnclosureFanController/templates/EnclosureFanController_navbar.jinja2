@@ -1,6 +1,6 @@
 <div class="navbar2-text">
-	{% if hardwareError %}
-	<span class="enclosure-hardware-error" title="{{ hardwareError }}">{{ _('Enclosure: hardware unavailable, see plugin tab') }}</span>
+	{% if plugin_EnclosureFanController_hardwareError %}
+	<span class="enclosure-hardware-error" title="{{ plugin_EnclosureFanController_hardwareError }}">{{ _('Enclosure: hardware unavailable, see plugin tab') }}</span>
 	{% else %}
 	<span data-bind="attr: { title: 'Enclosure Temperature' }, html: enclosureTemp() "></span>
 	<span class="enclosure-fan-state" data-bind="attr: { title: 'Fan State' }, text: fanState() "></span>
