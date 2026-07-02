@@ -1,3 +1,14 @@
+{% if hardwareError %}
+<div class="alert alert-error" id="enclosureHardwareError">
+	<strong>{{ _('Hardware unavailable') }}</strong>
+	<p>{{ hardwareError }}</p>
+</div>
+{% else %}
+<!-- Covers a tab that was already open when OctoPrint restarted and hit a
+     hardware error - the block above only renders on page load/reload. -->
+<div class="alert alert-error" data-bind="visible: hardwareError, text: hardwareError" style="display: none;"></div>
+{% endif %}
+
 <div>
 	<span id="enclosureInfo" data-bind="attr: { title: 'Enclosure Temperature' }, html: enclosureTemp()"></span>
 	<span id="enclosureFanState" data-bind="attr: { title: 'Fan State' }, text: fanState()"></span>

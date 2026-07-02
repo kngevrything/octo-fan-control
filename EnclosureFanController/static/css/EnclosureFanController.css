@@ -12,3 +12,7 @@
 .navbar2-text .enclosure-fan-state {
   margin-left: 8px;
 }
+
+.navbar2-text .enclosure-hardware-error {
+  color: #b94a48;
+}

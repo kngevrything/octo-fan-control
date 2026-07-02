@@ -201,7 +201,7 @@ class HardwareUnavailableTests(unittest.TestCase):
 
     def test_on_after_startup_disables_control_when_imports_missing(self):
         # Simulates RPi.GPIO / w1thermsensor failing to import (e.g. 1-Wire
-        # not enabled yet) - on_after_startup() should not raise.
+        # not enabled yet) - startup initialization should not raise.
         ctrl = make_controller(self.module, DEFAULT_SETTINGS)
         self.module.GPIO = None
         self.module.W1ThermSensor = None
@@ -211,12 +211,21 @@ class HardwareUnavailableTests(unittest.TestCase):
         self.assertFalse(ctrl._hardwareOk)
         self.assertIsNone(ctrl._checkTempTimer, "timer should never be started")
         self.assertTrue(
-            any("hardware libraries are unavailable" in msg for _, msg in ctrl._logger.messages),
+            any("Hardware unavailable" in msg for _, msg in ctrl._logger.messages),
             "expected a clear error log explaining hardware is unavailable",
         )
         identifier, data = ctrl._plugin_manager.messages[-1]
         self.assertTrue(data["sensorError"])
         self.assertIsNone(data["enclosureTemp"])
+
+        # The failure must also be surfaced to the UI, not just the log -
+        # both via the live push and via the server-rendered template data,
+        # so a fresh page load shows it too without depending on a
+        # websocket message having already arrived.
+        self.assertIsNotNone(ctrl._hardwareError)
+        self.assertEqual(data["hardwareError"], ctrl._hardwareError)
+        self.assertIn("1-Wire", ctrl._hardwareError)
+        self.assertEqual(ctrl.get_template_vars()["hardwareError"], ctrl._hardwareError)
 
     def test_on_after_startup_disables_control_when_hardware_init_fails(self):
         # Imports succeed, but actual init (e.g. GPIO.setup, or no sensor
@@ -227,8 +236,8 @@ class HardwareUnavailableTests(unittest.TestCase):
             raise RuntimeError("no sensor found on bus")
 
         # The fake RPi.GPIO module lives in sys.modules and is reused across
-        # tests (see fakes.install_fake_modules), so restore it afterwards -
-        # otherwise this monkeypatch leaks into later tests.
+        # tests, so restore it afterwards - otherwise this monkeypatch leaks
+        # into later tests.
         original_setup = self.gpio.setup
         self.addCleanup(setattr, self.gpio, "setup", original_setup)
         self.gpio.setup = _boom
@@ -240,6 +249,28 @@ class HardwareUnavailableTests(unittest.TestCase):
         self.assertTrue(
             any("failed to initialize GPIO/sensor hardware" in msg for _, msg in ctrl._logger.messages)
         )
+        self.assertIsNotNone(ctrl._hardwareError)
+        identifier, data = ctrl._plugin_manager.messages[-1]
+        self.assertEqual(data["hardwareError"], ctrl._hardwareError)
+
+    def test_sensor_read_returns_none_quietly_when_hardware_unavailable(self):
+        # self._sensor stays None when hardware initialization never
+        # succeeded - reading temperature in that state should just return
+        # None, not log a confusing attribute error on every page
+        # render/poll.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        ctrl._sensor = None
+
+        result = ctrl.getCurrentTemperature()
+
+        self.assertIsNone(result)
+        self.assertFalse(
+            any("Couldn't read temperature sensor" in msg for _, msg in ctrl._logger.messages)
+        )
+
+    def test_get_template_vars_hardware_error_none_when_healthy(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        self.assertIsNone(ctrl.get_template_vars()["hardwareError"])
 
     def test_shutdown_is_noop_when_hardware_unavailable(self):
         ctrl = make_controller(self.module, DEFAULT_SETTINGS)

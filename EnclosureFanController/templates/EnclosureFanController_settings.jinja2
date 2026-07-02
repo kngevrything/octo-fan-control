@@ -1,3 +1,10 @@
+{% if hardwareError %}
+<div class="alert alert-error" id="enclosureHardwareErrorSettings">
+    <strong>{{ _('Hardware unavailable') }}</strong>
+    <p>{{ hardwareError }}</p>
+</div>
+{% endif %}
+
 <form class="form-horizontal">
     <div class="control-group">
         <label class="control-label">{{ _('Display Unit') }}</label>

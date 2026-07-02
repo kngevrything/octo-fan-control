@@ -5,6 +5,14 @@ $(function() {
         self.settings = parameters[0];
 	self.enclosureTemp = ko.observable();
 	self.fanState = ko.observable();
+	// Intentionally not cleared before binding - if hardware failed to
+	// initialize at startup, the initial value is rendered server-side
+	// directly into the tab/settings/navbar templates, since that's the
+	// common case (page load/reload after a restart) and shouldn't depend
+	// on a websocket message having already arrived. This observable is a
+	// secondary path that only matters for a tab that was already open at
+	// the moment OctoPrint restarted.
+	self.hardwareError = ko.observable();
 
         // This will get called before the EnclosureFanControllerViewModel gets bound to the DOM, but after its
         // dependencies have already been initialized. It is especially guaranteed that this method
@@ -18,6 +26,10 @@ $(function() {
 	self.onDataUpdaterPluginMessage = function(plugin, data) {
 		if (plugin != "EnclosureFanController"){
 			return;
+		}
+
+		if (data.hardwareError){
+			self.hardwareError(data.hardwareError);
 		}
 
 		if (data.sensorError){
@@ -35,7 +47,8 @@ $(function() {
 	};
 
 	// Client-side feedback for invalid hysteresis/threshold combinations,
-	// mirroring the defensive clamping GetSettingValues() does server-side.
+	// mirroring the defensive clamping the server also applies to saved
+	// settings.
 	self.hysteresisWarning = ko.pureComputed(function() {
 		var pluginSettings = self.settings.settings.plugins.EnclosureFanController;
 		if (!pluginSettings) {

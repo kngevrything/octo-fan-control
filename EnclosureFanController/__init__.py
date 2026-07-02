@@ -7,15 +7,14 @@ from octoprint.util import RepeatedTimer
 
 # RPi.GPIO and w1thermsensor are both only available (and only importable)
 # on real hardware. w1thermsensor in particular runs `modprobe` as a *side
-# effect of being imported* (see w1thermsensor/kernel.py), so if the
-# kernel's 1-Wire interface isn't enabled yet, the import raises rather than
-# failing later when the sensor is actually used. Previously that exception
-# propagated up through OctoPrint's plugin loader, which made the whole
-# plugin silently disappear from the plugin list instead of just disabling
-# temperature/fan control. Import both defensively so a missing or
-# misconfigured 1-Wire setup degrades gracefully - on_after_startup() checks
-# these and disables hardware features (with a clear log message) instead of
-# the plugin failing to load at all.
+# effect of being imported*, so if the kernel's 1-Wire interface isn't
+# enabled yet, the import raises rather than failing later when the sensor
+# is actually used. Previously that exception propagated up through
+# OctoPrint's plugin loader, which made the whole plugin silently disappear
+# from the plugin list instead of just disabling temperature/fan control.
+# Import both defensively so a missing or misconfigured 1-Wire setup
+# degrades gracefully at startup: hardware features get disabled (with a
+# clear log message) instead of the plugin failing to load at all.
 _GPIO_IMPORT_ERROR = None
 _W1THERMSENSOR_IMPORT_ERROR = None
 
@@ -124,7 +123,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			thresholdHysteresis = self._settings.get(["thresholdHysteresis"]),
 			timerInterval = self._settings.get(["timerInterval"]),
 			fanControlPin = self._settings.get(["fanControlPin"]),
-			enclosureTemp = self.getCurrentTemperature() or 0
+			enclosureTemp = self.getCurrentTemperature() or 0,
+			# Rendered directly (not via knockout) so it's correct as soon
+			# as the page loads/reloads, without waiting for a websocket
+			# push - important since the plugin only re-evaluates hardware
+			# availability once, at startup.
+			hardwareError = getattr(self, "_hardwareError", None)
 			)
 
 	def get_template_configs(self):
@@ -137,18 +141,22 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 	def __init__(self):
 		self._checkTempTimer = None
 		self._sensor = None
-		# Set True in on_after_startup() only if hardware init actually
-		# succeeds. Everything that touches GPIO/the sensor should check
+		# Set True only once hardware initialization has actually
+		# succeeded. Everything that touches GPIO/the sensor should check
 		# this first rather than assuming it's available.
 		self._hardwareOk = False
+		# Set to a user-facing, actionable message if hardware
+		# initialization fails, so it can be surfaced in the UI and in the
+		# log - both on page load and to any tab already open at the time.
+		self._hardwareError = None
 
 		self._fanIsOn = False
 		self._sensorFailureCount = 0
 
 	def _hardware_import_problems(self):
-		# Returns a list of human-readable problems if RPi.GPIO and/or
-		# w1thermsensor couldn't be imported (see the try/except imports at
-		# the top of this file), or an empty list if both are available.
+		# Returns a list of human-readable problems describing which
+		# required hardware libraries failed to import, or an empty list
+		# if both are available.
 		problems = []
 		if GPIO is None:
 			problems.append("RPi.GPIO could not be imported (%s)" % _GPIO_IMPORT_ERROR)
@@ -181,9 +189,11 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		# Retrieve settings and initialize GPIO and sensor
 		self.GetSettingValues()
 
-		# Reset (rather than trust __init__'s default) so this is correct
-		# even if on_after_startup ever runs more than once.
+		# Reset explicitly (rather than relying on the constructor's
+		# default) so this stays correct even if startup initialization
+		# ever runs more than once.
 		self._hardwareOk = False
+		self._hardwareError = None
 
 		# RPi.GPIO / w1thermsensor failing to import (most commonly:
 		# w1thermsensor's kernel module autoload failing because 1-Wire
@@ -191,20 +201,25 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		# making it silently vanish from the plugin list. Check first and
 		# degrade gracefully instead: log a clear, actionable error, notify
 		# the UI, and leave the plugin loaded (settings/tab still visible)
-		# rather than crashing.
+		# rather than crashing. self._hardwareError is the user-facing
+		# version of this - surfaced in the UI both on page load and to any
+		# tab already open, not just buried in the log.
 		problems = self._hardware_import_problems()
 		if problems:
 			for problem in problems:
 				self._logger.error("EnclosureFanController: %s" % problem)
-			self._logger.error(
-				"EnclosureFanController: required hardware libraries are "
-				"unavailable, so fan/temperature control is disabled. The "
-				"plugin remains loaded and its settings are still visible. "
-				"This is commonly caused by the kernel's 1-Wire interface "
-				"not being enabled yet - see the README's 'Enabling 1-Wire "
-				"on the Pi' section, fix the issue, then restart OctoPrint."
+
+			self._hardwareError = (
+				"Hardware unavailable (%s). This is commonly caused by the "
+				"Raspberry Pi's 1-Wire interface not being enabled yet - run "
+				"'sudo raspi-config' -> Interface Options -> 1-Wire -> "
+				"Enable (or add 'dtoverlay=w1-gpio' to "
+				"/boot/firmware/config.txt), reboot the Pi, then restart "
+				"OctoPrint. Fan/temperature control is disabled until this "
+				"is fixed." % "; ".join(problems)
 			)
-			self.sendStatusUpdate(None, sensorError=True)
+			self._logger.error("EnclosureFanController: %s" % self._hardwareError)
+			self.sendStatusUpdate(None, sensorError=True, hardwareError=self._hardwareError)
 			return
 
 		fanGpioPin = self._settings.get_int(["fanControlPin"])
@@ -215,14 +230,15 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			GPIO.output(fanGpioPin, GPIO.HIGH)
 			self._sensor = W1ThermSensor()
 		except Exception as ex:
-			self._logger.error(
-				"EnclosureFanController: failed to initialize GPIO/sensor "
-				"hardware (%s) - fan/temperature control is disabled. The "
-				"plugin remains loaded; fix the underlying issue (e.g. "
-				"check wiring, confirm /sys/bus/w1/devices/ shows a 28-... "
-				"folder) and restart OctoPrint." % ex
+			self._hardwareError = (
+				"Hardware unavailable: failed to initialize GPIO/sensor "
+				"hardware (%s). Check your wiring and that "
+				"/sys/bus/w1/devices/ shows a 28-... folder, then restart "
+				"OctoPrint. Fan/temperature control is disabled until this "
+				"is fixed." % ex
 			)
-			self.sendStatusUpdate(None, sensorError=True)
+			self._logger.error("EnclosureFanController: %s" % self._hardwareError)
+			self.sendStatusUpdate(None, sensorError=True, hardwareError=self._hardwareError)
 			return
 
 		self._hardwareOk = True
@@ -245,6 +261,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 		# Fahrenheit directly. Returns None on a failed read so callers can
 		# tell "sensor error" apart from a legitimate low (or sub-zero, in
 		# Celsius mode) reading, instead of silently treating both as 0.
+		if self._sensor is None:
+			# Hardware unavailable - nothing to read. Don't log here; the
+			# startup error already explains why, and logging a confusing
+			# attribute error on every page render/poll would just be noise.
+			return None
+
 		try:
 			tempCelsius = float(self._sensor.get_temperature())
 			temp = self.convertTemperature(tempCelsius)
@@ -263,10 +285,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 			return tempCelsius
 		return (tempCelsius * 9 / 5) + 32
 
-	def sendStatusUpdate(self, temp, sensorError):
+	def sendStatusUpdate(self, temp, sensorError, hardwareError=None):
 		# Broadcast the current temperature (in the configured display unit)
-		# and fan state to the UI via the existing send_plugin_message /
-		# onDataUpdaterPluginMessage mechanism.
+		# and fan state to the UI over the plugin's existing push-message
+		# channel. hardwareError is only set (non-None) when hardware
+		# initialization failed at startup, as opposed to sensorError, which
+		# just means this particular poll's read failed.
 		self._plugin_manager.send_plugin_message(
 			self._identifier,
 			dict(
@@ -274,6 +298,7 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 				tempUnit = getattr(self, "_tempUnit", "F"),
 				fanIsOn = self._fanIsOn,
 				sensorError = sensorError,
+				hardwareError = hardwareError,
 			)
 		)
 

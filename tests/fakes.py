@@ -46,8 +46,8 @@ def install_fake_modules():
         class FakeW1ThermSensor:
             """Stand-in for w1thermsensor.W1ThermSensor. Tests replace
             ctrl._sensor with their own FakeSensor for per-test control;
-            this only needs to exist so the constructor call in
-            EnclosureFanController.__init__ doesn't blow up."""
+            this only needs to exist so constructing the plugin doesn't
+            blow up."""
 
             def get_temperature(self):
                 return 20.0
@@ -174,12 +174,11 @@ class FakePluginManager:
 
 def make_controller(module, settings_values, temp_c=20.0):
     """Build an EnclosureFanController instance wired up with fakes, with
-    GetSettingValues() already applied and hardware treated as having
-    initialized successfully (ctrl._hardwareOk = True) - i.e. as if
-    on_after_startup() had already run and found working hardware. Tests
-    that specifically want to exercise the hardware-unavailable path
-    (see HardwareUnavailableTests) call on_after_startup() themselves
-    instead of relying on this shortcut."""
+    settings already loaded and hardware treated as having initialized
+    successfully (ctrl._hardwareOk = True) - i.e. as if startup had already
+    run and found working hardware. Tests that specifically want to
+    exercise the hardware-unavailable path trigger startup initialization
+    themselves instead of relying on this shortcut."""
 
     ctrl = module.EnclosureFanController()
     ctrl._logger = FakeLogger()

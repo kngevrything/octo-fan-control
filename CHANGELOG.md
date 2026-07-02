@@ -7,6 +7,15 @@ project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Hardware-unavailable banner**: if `RPi.GPIO`/`w1thermsensor` fail to
+  import or initialize (see "Plugin could silently disappear..." below), a
+  red "Hardware unavailable" alert with the specific error and fix now
+  appears on the Settings page and the "Enclosure" tab, and the navbar entry
+  switches to a short "hardware unavailable" notice - previously this was
+  only visible in `octoprint.log`, which most users never check. Rendered
+  server-side (`get_template_vars()`) so it's correct immediately on page
+  load/reload after a restart, and also pushed live for any tab that was
+  already open at the moment of the failure.
 - **Fan state indicator**: the navbar and "Enclosure" tab now show whether the
   fan is currently on or off, alongside the temperature, pushed over the
   existing `send_plugin_message`/`onDataUpdaterPluginMessage` channel.
@@ -30,6 +39,11 @@ project uses [Semantic Versioning](https://semver.org/).
   If hardware is unavailable for any reason, the plugin now logs a clear,
   actionable error, disables fan/temperature control, and stays loaded with
   its settings/tabs visible, instead of vanishing.
+- `getCurrentTemperature()` no longer logs a confusing `'NoneType' object
+  has no attribute 'get_temperature'` warning on every page render/poll
+  once hardware is known to be unavailable - it now short-circuits and
+  returns `None` quietly, since the startup log/UI banner already explains
+  why.
 - Hysteresis of `0` was previously accepted (only negative values fell back
   to the default); `GetSettingValues()` now rejects zero as well.
 - `GetSettingValues()` now defensively clamps hysteresis to below the

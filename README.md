@@ -83,11 +83,14 @@ unit after switching.
   imported or initialized (most commonly because the kernel's 1-Wire
   interface isn't enabled yet, or no sensor is wired). Instead it stays
   loaded - the plugin list, settings, and tabs remain visible - but
-  fan/temperature control is disabled until the problem is fixed. Check
-  `octoprint.log` for a line starting `EnclosureFanController: required
-  hardware libraries are unavailable` or `EnclosureFanController: failed to
-  initialize GPIO/sensor hardware`, which includes the underlying error.
-  Fix it (see "Enabling 1-Wire on the Pi" above), then restart OctoPrint.
+  fan/temperature control is disabled until the problem is fixed. A red
+  "Hardware unavailable" banner with the specific error and fix appears on
+  the Settings page and the "Enclosure" tab, and the navbar entry switches
+  to "hardware unavailable, see plugin tab" - you don't need to check
+  `octoprint.log` to notice this, though the same message is also logged
+  there as `EnclosureFanController: ...` if you want the full detail. Fix
+  it (see "Enabling 1-Wire on the Pi" above), then restart OctoPrint - the
+  banner won't clear until you do.
 * **Plugin won't load / `ImportError: No module named 'RPi'` or `'w1thermsensor'`**:
   these packages only install on a real Raspberry Pi (or another Linux board with
   GPIO support). They won't install in a dev environment on a regular PC/Mac. Make
