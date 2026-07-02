@@ -187,5 +187,78 @@ class FanControlTests(unittest.TestCase):
         self.assertIsNone(data["enclosureTemp"])
 
 
+class HardwareUnavailableTests(unittest.TestCase):
+    """Covers the graceful-degradation path added after a real-world
+    failure: w1thermsensor raising KernelModuleLoadError at import time
+    (1-Wire not enabled) used to take the whole plugin down with it, so it
+    silently vanished from OctoPrint's plugin list instead of just having
+    fan/temperature control disabled."""
+
+    def setUp(self):
+        self.module = load_plugin_module()
+        self.gpio = sys.modules["RPi.GPIO"]
+        self.gpio.calls.clear()
+
+    def test_on_after_startup_disables_control_when_imports_missing(self):
+        # Simulates RPi.GPIO / w1thermsensor failing to import (e.g. 1-Wire
+        # not enabled yet) - on_after_startup() should not raise.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        self.module.GPIO = None
+        self.module.W1ThermSensor = None
+
+        ctrl.on_after_startup()
+
+        self.assertFalse(ctrl._hardwareOk)
+        self.assertIsNone(ctrl._checkTempTimer, "timer should never be started")
+        self.assertTrue(
+            any("hardware libraries are unavailable" in msg for _, msg in ctrl._logger.messages),
+            "expected a clear error log explaining hardware is unavailable",
+        )
+        identifier, data = ctrl._plugin_manager.messages[-1]
+        self.assertTrue(data["sensorError"])
+        self.assertIsNone(data["enclosureTemp"])
+
+    def test_on_after_startup_disables_control_when_hardware_init_fails(self):
+        # Imports succeed, but actual init (e.g. GPIO.setup, or no sensor
+        # found on the bus) throws - should degrade the same way.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("no sensor found on bus")
+
+        # The fake RPi.GPIO module lives in sys.modules and is reused across
+        # tests (see fakes.install_fake_modules), so restore it afterwards -
+        # otherwise this monkeypatch leaks into later tests.
+        original_setup = self.gpio.setup
+        self.addCleanup(setattr, self.gpio, "setup", original_setup)
+        self.gpio.setup = _boom
+
+        ctrl.on_after_startup()
+
+        self.assertFalse(ctrl._hardwareOk)
+        self.assertIsNone(ctrl._checkTempTimer)
+        self.assertTrue(
+            any("failed to initialize GPIO/sensor hardware" in msg for _, msg in ctrl._logger.messages)
+        )
+
+    def test_shutdown_is_noop_when_hardware_unavailable(self):
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+        ctrl._hardwareOk = False
+        self.gpio.calls.clear()
+
+        ctrl.on_shutdown()  # must not raise, even though GPIO was never set up
+
+        self.assertEqual(self.gpio.calls, [])
+
+    def test_on_after_startup_succeeds_when_hardware_available(self):
+        # Sanity check that the normal (hardware-present) path still works.
+        ctrl = make_controller(self.module, DEFAULT_SETTINGS)
+
+        ctrl.on_after_startup()
+
+        self.assertTrue(ctrl._hardwareOk)
+        self.assertIsNotNone(ctrl._checkTempTimer)
+
+
 if __name__ == "__main__":
     unittest.main()

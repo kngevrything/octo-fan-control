@@ -3,9 +3,33 @@ from __future__ import absolute_import
 
 import octoprint.plugin
 import octoprint.events
-import RPi.GPIO as GPIO
-from w1thermsensor import W1ThermSensor
 from octoprint.util import RepeatedTimer
+
+# RPi.GPIO and w1thermsensor are both only available (and only importable)
+# on real hardware. w1thermsensor in particular runs `modprobe` as a *side
+# effect of being imported* (see w1thermsensor/kernel.py), so if the
+# kernel's 1-Wire interface isn't enabled yet, the import raises rather than
+# failing later when the sensor is actually used. Previously that exception
+# propagated up through OctoPrint's plugin loader, which made the whole
+# plugin silently disappear from the plugin list instead of just disabling
+# temperature/fan control. Import both defensively so a missing or
+# misconfigured 1-Wire setup degrades gracefully - on_after_startup() checks
+# these and disables hardware features (with a clear log message) instead of
+# the plugin failing to load at all.
+_GPIO_IMPORT_ERROR = None
+_W1THERMSENSOR_IMPORT_ERROR = None
+
+try:
+	import RPi.GPIO as GPIO
+except Exception as ex:
+	GPIO = None
+	_GPIO_IMPORT_ERROR = ex
+
+try:
+	from w1thermsensor import W1ThermSensor
+except Exception as ex:
+	W1ThermSensor = None
+	_W1THERMSENSOR_IMPORT_ERROR = ex
 
 class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 				octoprint.plugin.SettingsPlugin,
@@ -112,10 +136,25 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 
 	def __init__(self):
 		self._checkTempTimer = None
-		self._sensor= W1ThermSensor()
+		self._sensor = None
+		# Set True in on_after_startup() only if hardware init actually
+		# succeeds. Everything that touches GPIO/the sensor should check
+		# this first rather than assuming it's available.
+		self._hardwareOk = False
 
 		self._fanIsOn = False
 		self._sensorFailureCount = 0
+
+	def _hardware_import_problems(self):
+		# Returns a list of human-readable problems if RPi.GPIO and/or
+		# w1thermsensor couldn't be imported (see the try/except imports at
+		# the top of this file), or an empty list if both are available.
+		problems = []
+		if GPIO is None:
+			problems.append("RPi.GPIO could not be imported (%s)" % _GPIO_IMPORT_ERROR)
+		if W1ThermSensor is None:
+			problems.append("w1thermsensor could not be imported (%s)" % _W1THERMSENSOR_IMPORT_ERROR)
+		return problems
 
 	def __del__(self):
 		# Clean up timer
@@ -125,7 +164,12 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 	def on_shutdown(self):
 		# Leave the fan relay in a known-safe (off) state before releasing
 		# the GPIO pins - GPIO.cleanup() alone just floats the pin, which
-		# can leave the fan in whatever state it was last driven to.
+		# can leave the fan in whatever state it was last driven to. Skipped
+		# entirely if hardware init never succeeded - nothing to clean up,
+		# and GPIO may not even be importable.
+		if not self._hardwareOk:
+			return
+
 		try:
 			GPIO.output(self._fanControlPin, GPIO.HIGH)
 		except Exception as ex:
@@ -136,12 +180,52 @@ class EnclosureFanController(	octoprint.plugin.StartupPlugin,
 	def on_after_startup(self):
 		# Retrieve settings and initialize GPIO and sensor
 		self.GetSettingValues()
+
+		# Reset (rather than trust __init__'s default) so this is correct
+		# even if on_after_startup ever runs more than once.
+		self._hardwareOk = False
+
+		# RPi.GPIO / w1thermsensor failing to import (most commonly:
+		# w1thermsensor's kernel module autoload failing because 1-Wire
+		# isn't enabled yet) used to take the whole plugin down with it,
+		# making it silently vanish from the plugin list. Check first and
+		# degrade gracefully instead: log a clear, actionable error, notify
+		# the UI, and leave the plugin loaded (settings/tab still visible)
+		# rather than crashing.
+		problems = self._hardware_import_problems()
+		if problems:
+			for problem in problems:
+				self._logger.error("EnclosureFanController: %s" % problem)
+			self._logger.error(
+				"EnclosureFanController: required hardware libraries are "
+				"unavailable, so fan/temperature control is disabled. The "
+				"plugin remains loaded and its settings are still visible. "
+				"This is commonly caused by the kernel's 1-Wire interface "
+				"not being enabled yet - see the README's 'Enabling 1-Wire "
+				"on the Pi' section, fix the issue, then restart OctoPrint."
+			)
+			self.sendStatusUpdate(None, sensorError=True)
+			return
+
 		fanGpioPin = self._settings.get_int(["fanControlPin"])
 
-		GPIO.setmode(GPIO.BCM)
-		GPIO.setup(fanGpioPin, GPIO.OUT)
-		GPIO.output(fanGpioPin, GPIO.HIGH)
-		self._sensor= W1ThermSensor()
+		try:
+			GPIO.setmode(GPIO.BCM)
+			GPIO.setup(fanGpioPin, GPIO.OUT)
+			GPIO.output(fanGpioPin, GPIO.HIGH)
+			self._sensor = W1ThermSensor()
+		except Exception as ex:
+			self._logger.error(
+				"EnclosureFanController: failed to initialize GPIO/sensor "
+				"hardware (%s) - fan/temperature control is disabled. The "
+				"plugin remains loaded; fix the underlying issue (e.g. "
+				"check wiring, confirm /sys/bus/w1/devices/ shows a 28-... "
+				"folder) and restart OctoPrint." % ex
+			)
+			self.sendStatusUpdate(None, sensorError=True)
+			return
+
+		self._hardwareOk = True
 
 		if self._interval <= 0:
 			self._interval = 5

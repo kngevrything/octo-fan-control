@@ -19,6 +19,17 @@ project uses [Semantic Versioning](https://semver.org/).
   temperature.
 
 ### Fixed
+- **Plugin could silently disappear from the plugin list**: `RPi.GPIO` and
+  `w1thermsensor` were imported at module level, and `w1thermsensor` runs
+  `modprobe` as a side effect of import - if the kernel's 1-Wire interface
+  wasn't enabled yet, the import raised `KernelModuleLoadError`, which
+  OctoPrint's plugin loader caught by simply not loading the plugin at all
+  (no entry in the plugin list, easy to miss in `octoprint.log`). Both
+  imports are now wrapped defensively, and hardware init (GPIO setup, sensor
+  construction) happens in `on_after_startup()` inside its own try/except.
+  If hardware is unavailable for any reason, the plugin now logs a clear,
+  actionable error, disables fan/temperature control, and stays loaded with
+  its settings/tabs visible, instead of vanishing.
 - Hysteresis of `0` was previously accepted (only negative values fell back
   to the default); `GetSettingValues()` now rejects zero as well.
 - `GetSettingValues()` now defensively clamps hysteresis to below the

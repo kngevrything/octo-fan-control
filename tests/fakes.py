@@ -174,7 +174,12 @@ class FakePluginManager:
 
 def make_controller(module, settings_values, temp_c=20.0):
     """Build an EnclosureFanController instance wired up with fakes, with
-    GetSettingValues() already applied."""
+    GetSettingValues() already applied and hardware treated as having
+    initialized successfully (ctrl._hardwareOk = True) - i.e. as if
+    on_after_startup() had already run and found working hardware. Tests
+    that specifically want to exercise the hardware-unavailable path
+    (see HardwareUnavailableTests) call on_after_startup() themselves
+    instead of relying on this shortcut."""
 
     ctrl = module.EnclosureFanController()
     ctrl._logger = FakeLogger()
@@ -182,5 +187,6 @@ def make_controller(module, settings_values, temp_c=20.0):
     ctrl._plugin_manager = FakePluginManager()
     ctrl._identifier = "EnclosureFanController"
     ctrl._sensor = FakeSensor(temp_c=temp_c)
+    ctrl._hardwareOk = True
     ctrl.GetSettingValues()
     return ctrl
